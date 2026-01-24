@@ -40,40 +40,40 @@ class IPv4:
     def __init__(self, buffer: bytes):
         b = ''.join(format(byte, '08b') for byte in [*buffer])
 
-        v_str = b[0:8] 
-        version = int(v_str, 2)
+        v_str = b[0:4] 
+        self.version = int(v_str, 2)
 
-        h_len = 20
+        self.header_len = int(b[4:8], 2) * 4
 
         tos_str = b[8:16]
-        tos = int(tos_str, 2)
+        self.tos = int(tos_str, 2)
 
         total_len_str = b[16:32]
-        total_len = int(total_len_str, 2)
+        self.length = int(total_len_str, 2)
         
         id_str = b[32:48]
-        id = int(id_str, 2)
+        self.id = int(id_str, 2)
 
-        flags_str = b[48:56] 
-        flags = int(flags_str, 2)
+        flags_str = b[48:51] 
+        self.flags = int(flags_str, 2)
 
-        frag_o_str = b[56:64]
-        frag_offset = int(frag_o_str, 2)
+        frag_o_str = b[51:64]
+        self.frag_offset = int(frag_o_str, 2) 
 
         ttl_str = b[64:72]
-        ttl = int(ttl_str, 2)
+        self.ttl = int(ttl_str, 2)
 
         proto_str = b[72:80]
-        proto = int(proto_str, 2)
+        self.proto = int(proto_str, 2)
 
         cksum_str = b[80:96]
-        cksum = int(cksum_str, 2)
+        self.cksum = int(cksum_str, 2)
 
-        src_str = b[96:128]
-        src = int(src_str, 2)
+        src_1, src_2, src_3, src_4 = int(b[96:104],2), int(b[104:112],2), int(b[112:120],2), int(b[120:128],2)
+        self.src = str(src_1) + "." + str(src_2) +  "." + str(src_3) +  "." + str(src_4) 
 
-        dst_str = b[128:160]
-        dst = int(dst_str, 2)
+        dst1, dst2, dst3, dst4 = int(b[128: 136], 2), int(b[136: 144], 2), int(b[144:152], 2), int(b[152:160], 2)
+        self.dst = str(dst1) + "." + str(dst2) +  "." + str(dst3) +  "." + str(dst4)
 
 
         pass  # TODO
@@ -98,7 +98,16 @@ class ICMP:
     cksum: int
 
     def __init__(self, buffer: bytes):
-    
+        b = ''.join(format(byte, '08b') for byte in [*buffer])
+
+        type_str = b[0:8]
+        self.type = int(type_str, 2)
+
+        code_str = b[8:16]
+        self.code = int(code_str, 2)
+
+        cksum_str = b[16: 32]
+        self.cksum = int(cksum_str, 2)
         pass  # TODO
 
     def __str__(self) -> str:
@@ -120,17 +129,17 @@ class UDP:
     def __init__(self, buffer: bytes):
         b = ''.join(format(byte, '08b') for byte in [*buffer])
 
-        src_port_str = b[384:400]
-        src_port = int(src_port_str, 2)
+        src_port_str = b[0:16]
+        self.src_port = int(src_port_str, 2)
 
-        dst_port_str = b[400:416]
-        dst_post = int(dst_port_str, 2)
+        dst_port_str = b[16:32]
+        self.dst_port = int(dst_port_str, 2)
 
-        len_str = b[416:432] 
-        len = int(len_str, 2)
+        len_str = b[32:48] 
+        self.len = int(len_str, 2)
 
-        cksum_str = b[432:464]
-        cksum = int(cksum_str, 2)
+        cksum_str = b[48:64]
+        self.cksum = int(cksum_str, 2)
         pass  # TODO
 
     def __str__(self) -> str:
@@ -138,6 +147,21 @@ class UDP:
             f"len {self.len}, cksum 0x{self.cksum:x})"
 
 # TODO feel free to add helper functions if you'd like
+def probe(sendsock: util.Socket, recvsock: util.Socket, ttl: int, dest_ip: str, seen: set): 
+    res = []
+    for i in range(PROBE_ATTEMPT_COUNT):
+        sendsock.set_ttl(ttl)
+        sendsock.sendto("Potato".encode(), (dest_ip, 33436))
+        if recvsock.recv_select():  # Check if there's a packet to process.
+            buf, address = recvsock.recvfrom()  # Receive the packet.
+            if address[0] == dest_ip:
+                return [address[0]]
+            if address[0] not in seen: 
+                seen.add(address[0])
+                res.append(address[0])
+
+    return res
+
 
 def traceroute(sendsock: util.Socket, recvsock: util.Socket, ip: str) \
         -> list[list[str]]:
@@ -163,18 +187,34 @@ def traceroute(sendsock: util.Socket, recvsock: util.Socket, ip: str) \
     # for ttl in range(1, TRACEROUTE_MAX_TTL+1):
     #     util.print_result([], ttl)
     # return []
-    print(ip)
-    sendsock.set_ttl(30)
-    sendsock.sendto("Potato".encode(), (ip, 33436))
 
-    if recvsock.recv_select():  # Check if there's a packet to process.
-        buf, address = recvsock.recvfrom()  # Receive the packet.
-        # Print out the packet for debugging.
-        print(f"Packet bytes: {buf.hex()}")
-        # print(f"Packet is from IP: {address[0]}")
-        # print(f"Packet is from port: {address[1]}")
+
+    # print(ip)
+    # sendsock.set_ttl(3)
+    # sendsock.sendto("Potato".encode(), (ip, 33436))
+
+    # if recvsock.recv_select():  # Check if there's a packet to process.
+    #     buf, address = recvsock.recvfrom()  # Receive the packet.
+    #     # Print out the packet for debugging.
+    #     print(f"Packet bytes: {buf.hex()}")
+    #     # print(f"Packet is from IP: {address[0]}")
+    #     # print(f"Packet is from port: {address[1]}")
+    #     print(ICMP(buffer=buf))
+    #     print(UDP(buffer=buf))
+    #     print(IPv4(buffer=buf))
+
+    res = []
+    seen = set()
+    ttl_count = 1
+    while (not res) or res[-1] != [ip]: 
+        ans = probe(sendsock=sendsock, recvsock=recvsock, ttl=ttl_count, dest_ip=ip,seen=seen)
+        if ans: 
+            res.append(ans)
+        ttl_count+=1
 
     
+    print(res)
+    return res
 
 
 if __name__ == '__main__':
