@@ -1,5 +1,6 @@
 import util
 
+
 # Your program should send TTLs in the range [1, TRACEROUTE_MAX_TTL] inclusive.
 # Technically IPv4 supports TTLs up to 255, but in practice this is excessive.
 # Most traceroute implementations cap at approximately 30.  The unit tests
@@ -145,15 +146,112 @@ class UDP:
     def __str__(self) -> str:
         return f"UDP (src_port {self.src_port}, dst_port {self.dst_port}, " + \
             f"len {self.len}, cksum 0x{self.cksum:x})"
+    
 
-# TODO feel free to add helper functions if you'd like
+
+# check for icmp packet 
+# input: ipv4 object 
+# output: icmp object 
+
+# check for udp packet 
+# input: ipv4 object 
+# output: icmp object
+
+def is_icmp(buf: bytes): 
+    """
+    Docstring for icmp_or_udp
+    
+    validates whether buf has an icmp or udp packet
+
+    input: buf 
+    type buf:bytes
+    output: -> [icmp, udp]
+    type: output: int 
+
+    """
+    b = ''.join(format(byte, '08b') for byte in [*buf])
+
+    ipv4_packet = IPv4(buf)
+    header_len = ipv4_packet.header_len
+    total_packet_len = ipv4_packet.length
+
+
+    icmp_packet_bytes = b[header_len: total_packet_len]
+    return int(icmp_packet_bytes[-32:]) == 0
+
+
+
+def ipv4_to_icmp(buf:bytes):
+    """
+    Docstring for ipv4_to_icmp
+    
+    :param buf: buffer from the packet 
+    :type buf: bytes
+
+    output: icmp object 
+    type: ICMP 
+    """
+    ipv4_packet = IPv4(buf)
+    header_len = ipv4_packet.header_len
+    total_packet_len = ipv4_packet.length
+
+    icmp_packet = ICMP(buf[header_len: total_packet_len])
+
+    if not (ipv4_packet.proto == 1): 
+        return None 
+    
+    if icmp_drop_logic(icmp_packet=icmp_packet):
+        return None
+
+    return icmp_packet
+
+def icmp_drop_logic(icmp_packet:ICMP): 
+    """
+    Docstring for icmp_drop_logic
+    
+    :param icmp_packet: ICMP object
+    :type icmp_packet: ICMP
+    output: True if packet should be dropped 
+    """
+    type = icmp_packet.type
+    code = icmp_packet.code 
+
+    # B2
+    if not (type == 3 or type == 11): 
+        return True
+    
+    # B3
+    if type == 11 and code != 0: 
+        return True
+    
+    return False
+
+#
+def ipv4_garbage_check(buf:bytes):
+    payload = buf[headerlen+64:]
+
+def create_ipv4(buf:bytes): 
+    return IPv4(buf)
+
+
+
+
 def probe(sendsock: util.Socket, recvsock: util.Socket, ttl: int, dest_ip: str, seen: set): 
     res = []
+
     for i in range(PROBE_ATTEMPT_COUNT):
         sendsock.set_ttl(ttl)
         sendsock.sendto("Potato".encode(), (dest_ip, 33436))
+
         if recvsock.recv_select():  # Check if there's a packet to process.
+
             buf, address = recvsock.recvfrom()  # Receive the packet.
+
+            if is_icmp: 
+                if not ipv4_to_icmp(buf):  
+                    continue
+            
+
             if address[0] == dest_ip:
                 return [address[0]]
             if address[0] not in seen: 
@@ -183,29 +281,10 @@ def traceroute(sendsock: util.Socket, recvsock: util.Socket, ip: str) \
     should be included as the final element in the list.
     """
 
-    # TODO Add your implementation
-    # for ttl in range(1, TRACEROUTE_MAX_TTL+1):
-    #     util.print_result([], ttl)
-    # return []
-
-
-    # print(ip)
-    # sendsock.set_ttl(3)
-    # sendsock.sendto("Potato".encode(), (ip, 33436))
-
-    # if recvsock.recv_select():  # Check if there's a packet to process.
-    #     buf, address = recvsock.recvfrom()  # Receive the packet.
-    #     # Print out the packet for debugging.
-    #     print(f"Packet bytes: {buf.hex()}")
-    #     # print(f"Packet is from IP: {address[0]}")
-    #     # print(f"Packet is from port: {address[1]}")
-    #     print(ICMP(buffer=buf))
-    #     print(UDP(buffer=buf))
-    #     print(IPv4(buffer=buf))
-
     res = []
     seen = set()
     ttl_count = 1
+
     while (not res) or res[-1] != [ip]: 
         ans = probe(sendsock=sendsock, recvsock=recvsock, ttl=ttl_count, dest_ip=ip,seen=seen)
         if ans: 
