@@ -146,17 +146,8 @@ class UDP:
     def __str__(self) -> str:
         return f"UDP (src_port {self.src_port}, dst_port {self.dst_port}, " + \
             f"len {self.len}, cksum 0x{self.cksum:x})"
-    
 
-
-# check for icmp packet 
-# input: ipv4 object 
-# output: icmp object 
-
-# check for udp packet 
-# input: ipv4 object 
-# output: icmp object
-
+# Miscellaneous
 def is_icmp(buf: bytes): 
     """
     Docstring for icmp_or_udp
@@ -177,9 +168,8 @@ def is_icmp(buf: bytes):
 
 
     icmp_packet_bytes = b[header_len: total_packet_len]
+    # B4 Check
     return int(icmp_packet_bytes[-32:]) == 0
-
-
 
 def ipv4_to_icmp(buf:bytes):
     """
@@ -205,7 +195,45 @@ def ipv4_to_icmp(buf:bytes):
 
     return icmp_packet
 
-def icmp_drop_logic(icmp_packet:ICMP): 
+# IPv4 Drop logic 
+def ipv4_drop_logic(buf:bytes): 
+    if unparseable_response(buf): 
+        return True 
+    if truncated_buffer(buf): 
+        return True 
+    if invalid_protocol(buf): 
+        return True 
+
+# Truncated Buffer
+def truncated_buffer(buf:bytes): 
+    packet = IPv4(buf)
+    return not (len(buf) == packet.length)
+
+# Unparseable Response 
+def unparseable_response(buf:bytes): 
+    packet = IPv4(buf)
+    packet_len = packet.length
+    payload = "Potato".encode()
+
+
+    # parse the payload
+    b = ''.join(format(byte, '08b') for byte in [*buf])
+    test_payload = b[packet_len+64:]
+    return not (payload == test_payload)
+
+# Invalid Protocol 
+def invalid_protocol(buf:bytes): 
+    packet = IPv4(buf)
+    if is_icmp(bytes):  
+        if not (packet.proto == 1): 
+            return True
+    return False
+
+# IP Options 
+def ip_options(bytes): 
+    
+# ICMP Drop logic
+def icmp_drop_logic(buf:bytes): 
     """
     Docstring for icmp_drop_logic
     
@@ -213,25 +241,34 @@ def icmp_drop_logic(icmp_packet:ICMP):
     :type icmp_packet: ICMP
     output: True if packet should be dropped 
     """
+    icmp_packet = ipv4_to_icmp(bytes)
+
     type = icmp_packet.type
     code = icmp_packet.code 
 
-    # B2
-    if not (type == 3 or type == 11): 
-        return True
+    if invalid_icmp_type(type, code): 
+        return True 
     
-    # B3
-    if type == 11 and code != 0: 
+    if invalid_icmp_code(type, code):
         return True
     
     return False
 
-#
-def ipv4_garbage_check(buf:bytes):
-    payload = buf[headerlen+64:]
+# Invalid ICMP Type 
+def invalid_icmp_type(type:int, code:int):
+    # B2
+    if not (type == 3 or type == 11): 
+        return True
+    return False 
 
-def create_ipv4(buf:bytes): 
-    return IPv4(buf)
+# Invalid ICMP Code 
+def invalid_icmp_code(type:int, code:int): 
+    # B3
+    if type == 11 and code != 0: 
+        return True
+    return False
+
+
 
 
 
@@ -247,9 +284,10 @@ def probe(sendsock: util.Socket, recvsock: util.Socket, ttl: int, dest_ip: str, 
 
             buf, address = recvsock.recvfrom()  # Receive the packet.
 
-            if is_icmp: 
-                if not ipv4_to_icmp(buf):  
-                    continue
+            if ipv4_drop_logic(bytes): 
+                continue
+            if icmp_drop_logic(bytes):
+                continue
             
 
             if address[0] == dest_ip:
