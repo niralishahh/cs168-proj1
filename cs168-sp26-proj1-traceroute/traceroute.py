@@ -149,17 +149,6 @@ class UDP:
 
 # Miscellaneous
 def is_icmp(buf: bytes): 
-    """
-    Docstring for icmp_or_udp
-    
-    validates whether buf has an icmp or udp packet
-
-    input: buf 
-    type buf:bytes
-    output: -> [icmp, udp]
-    type: output: int 
-
-    """
     packet = IPv4(buf)
     return packet.proto == 1
 
@@ -188,46 +177,33 @@ def ipv4_to_icmp(buf:bytes):
     
     return icmp_packet
 
-# IPv4 Drop logic 
-def ipv4_drop_logic(buf:bytes):
-    packet = IPv4(buf) 
-    if unparseable_response(packet, buf): 
-        return True 
-    if truncated_buffer(packet, buf): 
-        return True 
-    if invalid_protocol(packet,buf): 
-        return True 
-    if irr_udp(packet): 
-        return True
 
 # Truncated Buffer
-def truncated_buffer(packet, buf): 
-    return not (len(buf) == packet.length)
+def truncated_buffer(buf): 
+    return len(buf) < 20 and IPv4(buf).length == len(buf)
 
-# Unparseable Response 
-def unparseable_response(packet, buf): 
-    packet_len = packet.length
-    payload = "Potato".encode()
+# # Unparseable Response 
+# def unparseable_response(packet, buf): 
+#     packet_len = packet.length
+#     payload = "Potato".encode()
 
 
-    # parse the payload
-    b = ''.join(format(byte, '08b') for byte in [*buf])
-    test_payload = b[packet_len+64:]
-    return not (payload == test_payload)
+#     # parse the payload
+#     b = ''.join(format(byte, '08b') for byte in [*buf])
+#     test_payload = b[packet_len+64:]
+#     return not (payload == test_payload)
 
 # Invalid Protocol 
-def invalid_protocol(packet, buf): 
-    if is_icmp(buf):  
-        if not (packet.proto == 1): 
-            return True
-    return False
+def invalid_protocol(packet): 
+    return not (packet.proto == 1)
+    
 
-# IP Options 
-def ip_options(packet): 
-    return packet.header_len > 20
+# # IP Options 
+# def ip_options(packet): 
+#     return packet.header_len > 20
 
-def irr_udp(packet): 
-    return is_udp(packet)
+# def irr_udp(packet): 
+#     return is_udp(packet)
 
 
 
@@ -241,8 +217,14 @@ def icmp_drop_logic(buf:bytes):
     :type icmp_packet: ICMP
     output: True if packet should be dropped 
     """
+    if truncated_buffer(buf): 
+        return True
+    
     if is_icmp(buf):
         icmp_packet = ipv4_to_icmp(buf)
+    else: 
+        return True    
+    
 
     type = icmp_packet.type
     code = icmp_packet.code 
@@ -283,9 +265,8 @@ def probe(sendsock: util.Socket, recvsock: util.Socket, ttl: int, dest_ip: str, 
         if recvsock.recv_select():  # Check if there's a packet to process.
             buf, address = recvsock.recvfrom()  # Receive the packet
             
-            if ipv4_drop_logic(buf): 
-                
-                continue
+            # if ipv4_drop_logic(buf): 
+            #     continue
             if icmp_drop_logic(buf): 
                 continue
             
