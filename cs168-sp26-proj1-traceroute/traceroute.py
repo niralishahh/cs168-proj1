@@ -171,9 +171,7 @@ def is_icmp(buf: bytes):
     # B4 Check
     return int(icmp_packet_bytes[-32:]) == 0
 
-def is_udp(buf: bytes): 
-
-    packet = IPv4(buf)
+def is_udp(packet): 
     return packet.proto == 17
 
 def ipv4_to_icmp(buf:bytes):
@@ -195,30 +193,29 @@ def ipv4_to_icmp(buf:bytes):
     if not (ipv4_packet.proto == 1): 
         return None 
     
-    if icmp_drop_logic(icmp_packet=icmp_packet):
-        return None
+    # if icmp_drop_logic(icmp_packet=icmp_packet):
+    #     return None
 
     return icmp_packet
 
 # IPv4 Drop logic 
-def ipv4_drop_logic(buf:bytes): 
-    if unparseable_response(buf): 
+def ipv4_drop_logic(buf:bytes):
+    packet = IPv4(buf) 
+    if unparseable_response(packet, buf): 
         return True 
-    if truncated_buffer(buf): 
+    if truncated_buffer(packet, buf): 
         return True 
-    if invalid_protocol(buf): 
+    if invalid_protocol(packet): 
         return True 
-    if irr_udp(buf): 
+    if irr_udp(packet): 
         return True
 
 # Truncated Buffer
-def truncated_buffer(buf:bytes): 
-    packet = IPv4(buf)
+def truncated_buffer(packet, buf): 
     return not (len(buf) == packet.length)
 
 # Unparseable Response 
-def unparseable_response(buf:bytes): 
-    packet = IPv4(buf)
+def unparseable_response(packet, buf): 
     packet_len = packet.length
     payload = "Potato".encode()
 
@@ -229,20 +226,19 @@ def unparseable_response(buf:bytes):
     return not (payload == test_payload)
 
 # Invalid Protocol 
-def invalid_protocol(buf:bytes): 
-    packet = IPv4(buf)
-    if is_icmp(buf):  
+def invalid_protocol(packet): 
+    packet
+    if is_icmp(bytes):  
         if not (packet.proto == 1): 
             return True
     return False
 
 # IP Options 
-def ip_options(buf:bytes): 
-    packet = IPv4(buf)
+def ip_options(packet): 
     return packet.header_len > 20
 
-def irr_udp(buf:bytes): 
-    return is_udp
+def irr_udp(packet): 
+    return is_udp(packet)
 
 
 
@@ -283,6 +279,37 @@ def invalid_icmp_code(type:int, code:int):
         return True
     return False
 
+# def send_three_packets(sendsock: util.Socket, ttl: int, dest_ip: str, recvsock: util.Socket):
+#     packets = []
+
+#     sendsock.set_ttl(ttl)
+#     sendsock.sendto("Potato".encode(), (dest_ip, 33436))
+#     if recvsock.recv_select():  # Check if there's a packet to process.
+#         packets.append(recvsock.recvfrom())
+
+#     sendsock.set_ttl(ttl)
+#     sendsock.sendto("Potato".encode(), (dest_ip, 33436))
+#     if recvsock.recv_select():  # Check if there's a packet to process.
+#         packets.append(recvsock.recvfrom())
+
+#     sendsock.set_ttl(ttl)
+#     sendsock.sendto("Potato".encode(), (dest_ip, 33436))
+#     if recvsock.recv_select():  # Check if there's a packet to process.
+#         packets.append(recvsock.recvfrom())
+
+#     print(f'Length of packets: {len(packets)}')
+#     return packets
+
+# # def recv_three_packets(recvsock: util.Socket):
+# #     packets = []
+# #     if recvsock.recv_select():  # Check if there's a packet to process.
+# #         packets.append(recvsock.recvfrom())
+# #     if recvsock.recv_select():  # Check if there's a packet to process.
+# #         packets.append(recvsock.recvfrom())
+# #     if recvsock.recv_select():  # Check if there's a packet to process.
+# #         packets.append(recvsock.recvfrom())
+# #     print(f'Length of packets: {len(packets)}')
+# #     return packets
 
 
 
@@ -290,20 +317,15 @@ def invalid_icmp_code(type:int, code:int):
 
 def probe(sendsock: util.Socket, recvsock: util.Socket, ttl: int, dest_ip: str, seen: set): 
     res = []
-
     for i in range(PROBE_ATTEMPT_COUNT):
         sendsock.set_ttl(ttl)
         sendsock.sendto("Potato".encode(), (dest_ip, 33436))
-
         if recvsock.recv_select():  # Check if there's a packet to process.
-
             buf, address = recvsock.recvfrom()  # Receive the packet.
 
-            if ipv4_drop_logic(buf): 
+            if icmp_drop_logic(buf): 
+                res.append([])
                 continue
-            if icmp_drop_logic(buf):
-                continue
-
             if address[0] == dest_ip:
                 return [address[0]]
             if address[0] not in seen: 
@@ -311,6 +333,7 @@ def probe(sendsock: util.Socket, recvsock: util.Socket, ttl: int, dest_ip: str, 
                 res.append(address[0])
 
     return res
+
 
 
 def traceroute(sendsock: util.Socket, recvsock: util.Socket, ip: str) \
@@ -337,7 +360,8 @@ def traceroute(sendsock: util.Socket, recvsock: util.Socket, ip: str) \
     seen = set()
     ttl_count = 1
 
-    while (not res) or res[-1] != [ip]: 
+    while ((not res) or res[-1] != [ip]): 
+        print(ttl_count)
         ans = probe(sendsock=sendsock, recvsock=recvsock, ttl=ttl_count, dest_ip=ip,seen=seen)
         if ans: 
             res.append(ans)
