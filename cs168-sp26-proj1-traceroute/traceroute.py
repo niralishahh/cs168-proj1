@@ -231,7 +231,7 @@ def unparseable_response(buf:bytes):
 # Invalid Protocol 
 def invalid_protocol(buf:bytes): 
     packet = IPv4(buf)
-    if is_icmp(bytes):  
+    if is_icmp(buf):  
         if not (packet.proto == 1): 
             return True
     return False
@@ -256,7 +256,7 @@ def icmp_drop_logic(buf:bytes):
     :type icmp_packet: ICMP
     output: True if packet should be dropped 
     """
-    icmp_packet = ipv4_to_icmp(bytes)
+    icmp_packet = ipv4_to_icmp(buf)
 
     type = icmp_packet.type
     code = icmp_packet.code 
@@ -299,9 +299,9 @@ def probe(sendsock: util.Socket, recvsock: util.Socket, ttl: int, dest_ip: str, 
 
             buf, address = recvsock.recvfrom()  # Receive the packet.
 
-            if ipv4_drop_logic(bytes): 
+            if ipv4_drop_logic(buf): 
                 continue
-            if icmp_drop_logic(bytes):
+            if icmp_drop_logic(buf):
                 continue
 
             if address[0] == dest_ip:
