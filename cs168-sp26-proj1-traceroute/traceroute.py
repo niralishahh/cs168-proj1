@@ -171,6 +171,11 @@ def is_icmp(buf: bytes):
     # B4 Check
     return int(icmp_packet_bytes[-32:]) == 0
 
+def is_udp(buf: bytes): 
+
+    packet = IPv4(buf)
+    return packet.proto == 17
+
 def ipv4_to_icmp(buf:bytes):
     """
     Docstring for ipv4_to_icmp
@@ -203,6 +208,8 @@ def ipv4_drop_logic(buf:bytes):
         return True 
     if invalid_protocol(buf): 
         return True 
+    if irr_udp(buf): 
+        return True
 
 # Truncated Buffer
 def truncated_buffer(buf:bytes): 
@@ -230,8 +237,16 @@ def invalid_protocol(buf:bytes):
     return False
 
 # IP Options 
-def ip_options(bytes): 
-    
+def ip_options(buf:bytes): 
+    packet = IPv4(buf)
+    return packet.header_len > 20
+
+def irr_udp(buf:bytes): 
+    return is_udp
+
+
+
+
 # ICMP Drop logic
 def icmp_drop_logic(buf:bytes): 
     """
@@ -288,7 +303,6 @@ def probe(sendsock: util.Socket, recvsock: util.Socket, ttl: int, dest_ip: str, 
                 continue
             if icmp_drop_logic(bytes):
                 continue
-            
 
             if address[0] == dest_ip:
                 return [address[0]]
