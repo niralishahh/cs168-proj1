@@ -160,16 +160,9 @@ def is_icmp(buf: bytes):
     type: output: int 
 
     """
-    b = ''.join(format(byte, '08b') for byte in [*buf])
+    packet = IPv4(buf)
+    return packet.proto == 1
 
-    ipv4_packet = IPv4(buf)
-    header_len = ipv4_packet.header_len
-    total_packet_len = ipv4_packet.length
-
-
-    icmp_packet_bytes = b[header_len: total_packet_len]
-    # B4 Check
-    return int(icmp_packet_bytes[-32:]) == 0
 
 def is_udp(packet): 
     return packet.proto == 17
@@ -190,12 +183,9 @@ def ipv4_to_icmp(buf:bytes):
 
     icmp_packet = ICMP(buf[header_len: total_packet_len])
 
-    if not (ipv4_packet.proto == 1): 
-        return None 
+    # if not (ipv4_packet.proto == 1): 
+    #     return None 
     
-    # if icmp_drop_logic(icmp_packet=icmp_packet):
-    #     return None
-
     return icmp_packet
 
 # IPv4 Drop logic 
@@ -205,7 +195,7 @@ def ipv4_drop_logic(buf:bytes):
         return True 
     if truncated_buffer(packet, buf): 
         return True 
-    if invalid_protocol(packet): 
+    if invalid_protocol(packet,buf): 
         return True 
     if irr_udp(packet): 
         return True
@@ -226,9 +216,8 @@ def unparseable_response(packet, buf):
     return not (payload == test_payload)
 
 # Invalid Protocol 
-def invalid_protocol(packet): 
-    packet
-    if is_icmp(bytes):  
+def invalid_protocol(packet, buf): 
+    if is_icmp(buf):  
         if not (packet.proto == 1): 
             return True
     return False
@@ -252,12 +241,13 @@ def icmp_drop_logic(buf:bytes):
     :type icmp_packet: ICMP
     output: True if packet should be dropped 
     """
-    icmp_packet = ipv4_to_icmp(buf)
+    if is_icmp(buf):
+        icmp_packet = ipv4_to_icmp(buf)
 
     type = icmp_packet.type
     code = icmp_packet.code 
 
-    if invalid_icmp_type(type, code): 
+    if invalid_icmp_type(type): 
         return True 
     
     if invalid_icmp_code(type, code):
@@ -266,7 +256,7 @@ def icmp_drop_logic(buf:bytes):
     return False
 
 # Invalid ICMP Type 
-def invalid_icmp_type(type:int, code:int):
+def invalid_icmp_type(type:int):
     # B2
     if not (type == 3 or type == 11): 
         return True
@@ -279,37 +269,7 @@ def invalid_icmp_code(type:int, code:int):
         return True
     return False
 
-# def send_three_packets(sendsock: util.Socket, ttl: int, dest_ip: str, recvsock: util.Socket):
-#     packets = []
 
-#     sendsock.set_ttl(ttl)
-#     sendsock.sendto("Potato".encode(), (dest_ip, 33436))
-#     if recvsock.recv_select():  # Check if there's a packet to process.
-#         packets.append(recvsock.recvfrom())
-
-#     sendsock.set_ttl(ttl)
-#     sendsock.sendto("Potato".encode(), (dest_ip, 33436))
-#     if recvsock.recv_select():  # Check if there's a packet to process.
-#         packets.append(recvsock.recvfrom())
-
-#     sendsock.set_ttl(ttl)
-#     sendsock.sendto("Potato".encode(), (dest_ip, 33436))
-#     if recvsock.recv_select():  # Check if there's a packet to process.
-#         packets.append(recvsock.recvfrom())
-
-#     print(f'Length of packets: {len(packets)}')
-#     return packets
-
-# # def recv_three_packets(recvsock: util.Socket):
-# #     packets = []
-# #     if recvsock.recv_select():  # Check if there's a packet to process.
-# #         packets.append(recvsock.recvfrom())
-# #     if recvsock.recv_select():  # Check if there's a packet to process.
-# #         packets.append(recvsock.recvfrom())
-# #     if recvsock.recv_select():  # Check if there's a packet to process.
-# #         packets.append(recvsock.recvfrom())
-# #     print(f'Length of packets: {len(packets)}')
-# #     return packets
 
 
 
@@ -321,18 +281,20 @@ def probe(sendsock: util.Socket, recvsock: util.Socket, ttl: int, dest_ip: str, 
         sendsock.set_ttl(ttl)
         sendsock.sendto("Potato".encode(), (dest_ip, 33436))
         if recvsock.recv_select():  # Check if there's a packet to process.
-            buf, address = recvsock.recvfrom()  # Receive the packet.
-
-            if icmp_drop_logic(buf): 
-                res.append([])
+            buf, address = recvsock.recvfrom()  # Receive the packet
+            
+            if ipv4_drop_logic(buf): 
+                
                 continue
+            if icmp_drop_logic(buf): 
+                continue
+            
             if address[0] == dest_ip:
                 return [address[0]]
             if address[0] not in seen: 
                 seen.add(address[0])
                 res.append(address[0])
-
-    return res
+    return res  
 
 
 
@@ -360,11 +322,10 @@ def traceroute(sendsock: util.Socket, recvsock: util.Socket, ip: str) \
     seen = set()
     ttl_count = 1
 
-    while ((not res) or res[-1] != [ip]): 
+    while ((not res) or res[-1] != [ip]):  
         print(ttl_count)
         ans = probe(sendsock=sendsock, recvsock=recvsock, ttl=ttl_count, dest_ip=ip,seen=seen)
-        if ans: 
-            res.append(ans)
+        res.append(ans)
         ttl_count+=1
 
     
