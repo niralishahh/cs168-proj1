@@ -169,12 +169,7 @@ def ipv4_to_icmp(buf:bytes):
     ipv4_packet = IPv4(buf)
     header_len = ipv4_packet.header_len
     total_packet_len = ipv4_packet.length
-
-    icmp_packet = ICMP(buf[header_len: total_packet_len])
-
-    # if not (ipv4_packet.proto == 1): 
-    #     return None 
-    
+    icmp_packet = ICMP(buf[header_len: total_packet_len])    
     return icmp_packet
 
 def ipv4_to_icmp_payload(buf:bytes): 
@@ -196,28 +191,10 @@ def ipv4_to_icmp_payload(buf:bytes):
 def truncated_buffer(buf): 
     return len(buf) < 20 or IPv4(buf).length != len(buf)
 
-# # Unparseable Response 
-# def unparseable_response(packet, buf): 
-#     packet_len = packet.length
-#     payload = "Potato".encode()
-
-
-#     # parse the payload
-#     b = ''.join(format(byte, '08b') for byte in [*buf])
-#     test_payload = b[packet_len+64:]
-#     return not (payload == test_payload)
-
 # Invalid Protocol 
 def invalid_protocol(packet): 
     return not (packet.proto == 1)
     
-
-# # IP Options 
-# def ip_options(packet): 
-#     return packet.header_len > 20
-
-# def irr_udp(packet): 
-#     return is_udp(packet)
 
 
 
@@ -271,31 +248,35 @@ def invalid_icmp_code(type:int, code:int):
 
 
 
+
 def probe(sendsock: util.Socket, recvsock: util.Socket, ttl: int, dest_ip: str):
     seen = set() 
     res = []
-    for i in range(PROBE_ATTEMPT_COUNT):
+    valid_packets = 0
+    sent = 0
+    while sent < PROBE_ATTEMPT_COUNT: 
         sendsock.set_ttl(ttl)
         payload = "a" * (ttl)
         sendsock.sendto(payload.encode(), (dest_ip, 33436))
+
+    while valid_packets < PROBE_ATTEMPT_COUNT:
+        valid_packets+=1
         if recvsock.recv_select():  # Check if there's a packet to process.
             buf, address = recvsock.recvfrom()  # Receive the packet
-            
             if icmp_drop_logic(buf): 
                 continue
-
+            
             if is_icmp(buf):
                 udp_header = ipv4_to_icmp_payload(buf)
-                print(udp_header)
                 if udp_header.len != 8+ttl:
+                    valid_packets-=1
                     continue
-
-
             if address[0] == dest_ip:
                 return [address[0]]
             if address[0] not in seen: 
                 seen.add(address[0])
                 res.append(address[0])
+        
     return res  
 
 
