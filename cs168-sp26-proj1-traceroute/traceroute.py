@@ -177,10 +177,24 @@ def ipv4_to_icmp(buf:bytes):
     
     return icmp_packet
 
+def ipv4_to_icmp_payload(buf:bytes): 
+    ipv4_packet = IPv4(buf)
+    header_len = ipv4_packet.header_len
+
+    icmp = buf[header_len:]
+    icmp_payload = icmp[8:]
+
+    second_ipv4 = IPv4(icmp_payload) 
+    second_header_len = second_ipv4.header_len
+
+    udp_header = UDP(icmp_payload[second_header_len:second_header_len+8])
+    return udp_header
+
+
 
 # Truncated Buffer
 def truncated_buffer(buf): 
-    return len(buf) < 20 and IPv4(buf).length == len(buf)
+    return len(buf) < 20 or IPv4(buf).length != len(buf)
 
 # # Unparseable Response 
 # def unparseable_response(packet, buf): 
@@ -257,19 +271,26 @@ def invalid_icmp_code(type:int, code:int):
 
 
 
-def probe(sendsock: util.Socket, recvsock: util.Socket, ttl: int, dest_ip: str, seen: set): 
+def probe(sendsock: util.Socket, recvsock: util.Socket, ttl: int, dest_ip: str):
+    seen = set() 
     res = []
     for i in range(PROBE_ATTEMPT_COUNT):
         sendsock.set_ttl(ttl)
-        sendsock.sendto("Potato".encode(), (dest_ip, 33436))
+        payload = "a" * (ttl)
+        sendsock.sendto(payload.encode(), (dest_ip, 33436))
         if recvsock.recv_select():  # Check if there's a packet to process.
             buf, address = recvsock.recvfrom()  # Receive the packet
             
-            # if ipv4_drop_logic(buf): 
-            #     continue
             if icmp_drop_logic(buf): 
                 continue
-            
+
+            if is_icmp(buf):
+                udp_header = ipv4_to_icmp_payload(buf)
+                print(udp_header)
+                if udp_header.len != 8+ttl:
+                    continue
+
+
             if address[0] == dest_ip:
                 return [address[0]]
             if address[0] not in seen: 
@@ -300,12 +321,10 @@ def traceroute(sendsock: util.Socket, recvsock: util.Socket, ip: str) \
     """
 
     res = []
-    seen = set()
     ttl_count = 1
 
-    while ((not res) or res[-1] != [ip]):  
-        print(ttl_count)
-        ans = probe(sendsock=sendsock, recvsock=recvsock, ttl=ttl_count, dest_ip=ip,seen=seen)
+    while ((not res) or res[-1] != [ip]) and ttl_count <= TRACEROUTE_MAX_TTL:  
+        ans = probe(sendsock=sendsock, recvsock=recvsock, ttl=ttl_count, dest_ip=ip)
         res.append(ans)
         ttl_count+=1
 
